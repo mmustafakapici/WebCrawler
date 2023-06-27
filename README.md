@@ -1,5 +1,5 @@
 # WebCrawler
-Multi-Threaded Web Crawler
+Multi-Threaded Web Crawler with WPF UI
 
 # Web Crawler Application
 
