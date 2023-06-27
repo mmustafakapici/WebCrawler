@@ -3,7 +3,7 @@ Multi-Threaded Web Crawler
 
 # Web Crawler Application
 
-![Web Crawler Application](web-crawler.png)
+![Web Crawler Application]
 
 ## Overview
 
