@@ -7,15 +7,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using HtmlAgilityPack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Schema;
 using Microsoft.EntityFrameworkCore;
 
-
 namespace WpfApp
 {
-    
     public partial class MainWindow : Window
     {
         private readonly CrawlerManager[] _crawlerManagers;
@@ -53,7 +52,7 @@ namespace WpfApp
             LoadUrlsFromUıJson();
             LoadLogsFromUıJson();
             CreateDatabaseAndPaths();
-            //LoadUrlsFromDatabase();
+            
         }
 
         private void StartClock()
@@ -90,10 +89,6 @@ namespace WpfApp
                     }
 
                     TxtUrl.Clear();
-                    if (!_crawlerManagers[index].IsCrawling)
-                    {
-                        _crawlerManagers[index].StartCrawling();
-                    }
                 }
                 else
                 {
@@ -166,6 +161,10 @@ namespace WpfApp
             LstAllLogs.Items.Clear();
             LstAllUrlsCrawled.Items.Clear();
 
+            LabelUrl1.Foreground = SystemColors.ControlTextBrush;
+            LabelUrl2.Foreground = SystemColors.ControlTextBrush;
+            LabelUrl3.Foreground = SystemColors.ControlTextBrush;
+
             for (int i = 0; i < _crawlerManagers.Length; i++)
             {
                 _crawlerManagers[i] = null;
@@ -177,7 +176,6 @@ namespace WpfApp
             SaveLogsToUıJson();
             SaveUrlsToUıJson();
             SaveUrlsToDatabase();
-           
         }
 
         private int GetAvailableCrawlerManagerIndex()
@@ -190,16 +188,10 @@ namespace WpfApp
             return -1;
         }
 
-       
-        
-      
-
-
         private void SaveUrlsToDatabase()
         {
             using (var dbContext = new MyDbContext(_databasePath))
             {
-                // Url sınıfından nesneler oluşturarak veritabanına kaydetme
                 foreach (var crawlerManager in _crawlerManagers)
                 {
                     if (crawlerManager != null)
@@ -207,14 +199,17 @@ namespace WpfApp
                         var urls = crawlerManager.GetCrawledUrls();
                         foreach (var url in urls)
                         {
-                            dbContext.TblUrls.Add(url);
+                            if (!dbContext.TblUrls.Any(u => u.UrlAddress == url.UrlAddress))
+                            {
+                                dbContext.TblUrls.Add(url);
+                            }
                         }
                     }
                 }
 
                 dbContext.SaveChanges();
             }
-            
+
             MessageBox.Show("URL'ler başarıyla kaydedildi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -314,13 +309,11 @@ namespace WpfApp
 
         private void CreateDatabaseAndPaths()
         {
-            // Create the "htmls" folder if it doesn't exist
             if (!Directory.Exists(_htmlsFolderPath))
             {
                 Directory.CreateDirectory(_htmlsFolderPath);
             }
 
-            // Create the "jsons" folder if it doesn't exist
             if (!Directory.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "jsons")))
             {
                 Directory.CreateDirectory(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "jsons"));
@@ -336,17 +329,18 @@ namespace WpfApp
             _dbContext?.Dispose();
         }
     }
+
     public class CrawlerManager
     {
         private readonly ConcurrentQueue<string> _rootUrls;
+        private readonly ConcurrentDictionary<string, bool> _processedUrls;
         private readonly ConcurrentQueue<string> _urlQueue;
         private readonly object _lockObject;
         private readonly Dictionary<string, int> _urlThreadMap;
         private readonly string _htmlsFolderPath;
-       private readonly string _logsSchemedJsonPath;
-       private readonly string _urlsSchemedJsonPath;
-       private readonly string _exceptionsSchemedJsonPath;
-
+        private readonly string _logsSchemedJsonPath;
+        private readonly string _urlsSchemedJsonPath;
+        private readonly string _exceptionsSchemedJsonPath;
 
         private readonly MainWindow _mainWindow;
         private bool _isPaused;
@@ -358,18 +352,17 @@ namespace WpfApp
 
         public bool IsCrawling { get; private set; }
 
-        public CrawlerManager(string rootUrl, int threadId, string htmlsFolderPath,   MainWindow mainWindow)
+        public CrawlerManager(string rootUrl, int threadId, string htmlsFolderPath, MainWindow mainWindow)
         {
             _rootUrls = new ConcurrentQueue<string>();
+            _processedUrls = new ConcurrentDictionary<string, bool>();
             _urlQueue = new ConcurrentQueue<string>();
             _lockObject = new object();
             _tasks = new List<Task>();
             _isPaused = false;
             _urlThreadMap = new Dictionary<string, int>();
             _crawledUrls = new List<Url>();
-            
-            
-            
+
             this._threadId = threadId;
             this._htmlsFolderPath = htmlsFolderPath;
             _logsSchemedJsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "jsons", "logsSCHEMED.json");
@@ -377,14 +370,17 @@ namespace WpfApp
             _exceptionsSchemedJsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "jsons", "exceptionsSCHEMED.json");
 
             this._mainWindow = mainWindow;
-            
-            
+
             AddRootUrl(rootUrl);
         }
 
         public void AddRootUrl(string url)
         {
-            _rootUrls.Enqueue(url);
+            if (!_processedUrls.ContainsKey(url))
+            {
+                _rootUrls.Enqueue(url);
+                _processedUrls[url] = true;
+            }
         }
 
         public void StartCrawling()
@@ -403,8 +399,27 @@ namespace WpfApp
 
             _taskScheduler = TaskScheduler.Current;
 
-            Task task = Task.Factory.StartNew(() => CrawlUrls(_tokenSource.Token), CancellationToken.None,
-                TaskCreationOptions.None, _taskScheduler);
+            Task task = Task.Factory.StartNew(() =>
+            {
+                _mainWindow.Dispatcher.Invoke(() =>
+                {
+                    switch (_threadId)
+                    {
+                        case 0:
+                            _mainWindow.LabelUrl1.Foreground = Brushes.Green;
+                            break;
+                        case 1:
+                            _mainWindow.LabelUrl2.Foreground = Brushes.Green;
+                            break;
+                        case 2:
+                            _mainWindow.LabelUrl3.Foreground = Brushes.Green;
+                            break;
+                    }
+                });
+
+                CrawlUrls(_tokenSource.Token);
+            }, CancellationToken.None, TaskCreationOptions.None, _taskScheduler);
+
             _tasks.Add(task);
 
             IsCrawling = true;
@@ -508,7 +523,7 @@ namespace WpfApp
                 foreach (var link in links)
                 {
                     string href = link.GetAttributeValue("href", string.Empty);
-                    if (!string.IsNullOrEmpty(href))
+                    if (!string.IsNullOrEmpty(href) && !_processedUrls.ContainsKey(href))
                     {
                         _urlQueue.Enqueue(href);
                         _urlThreadMap[href] = _threadId;
@@ -520,6 +535,7 @@ namespace WpfApp
                                 WriteFoundUrlsToJsons(crawledUrl, href);
                             }
                         });
+                        _processedUrls[href] = true;
                     }
                 }
             }
@@ -545,7 +561,6 @@ namespace WpfApp
             _mainWindow.LstAllUrlsCrawled.Items.Insert(0,
                 $"Thread: {_threadId + 1}, URL: {url}, Download Time: {downloadTime.TotalMilliseconds} ms, File: {fileName}, Time: {DateTime.Now}");
 
-            // CrawlerManager üzerinden kaydedilen her bir URL'ü Url sınıfı nesnesine dönüştürerek listeye ekleme
             _crawledUrls.Add(new Url
             {
                 UrlAddress = url,
@@ -615,6 +630,7 @@ namespace WpfApp
             return _crawledUrls;
         }
     }
+
     public class MyDbContext : DbContext
     {
         private readonly string _databasePath;
@@ -640,5 +656,4 @@ namespace WpfApp
         public int ThreadId { get; set; }
         public DateTime CreatedAt { get; set; }
     }
-    
 }
