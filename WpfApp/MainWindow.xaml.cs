@@ -11,9 +11,7 @@ using HtmlAgilityPack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Schema;
 using Microsoft.EntityFrameworkCore;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
-using MongoDB.Driver;
+
 
 namespace WpfApp
 {
@@ -179,7 +177,7 @@ namespace WpfApp
             SaveLogsToUıJson();
             SaveUrlsToUıJson();
             SaveUrlsToDatabase();
-           // SaveUrlsToMongo();
+           
         }
 
         private int GetAvailableCrawlerManagerIndex()
